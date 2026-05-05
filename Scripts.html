@@ -48,7 +48,9 @@
     state.profesionales = Array.isArray(data.profesionales) ? data.profesionales : [];
     state.tiposSesion = Array.isArray(data.tiposSesion) ? data.tiposSesion : [];
     state.estados = Array.isArray(data.estados) && data.estados.length ? data.estados : ['Programada', 'Realizada', 'Cancelada'];
-    state.sesiones = Array.isArray(data.sesiones) ? data.sesiones : [];
+    state.sesiones = Array.isArray(data.sesiones)
+      ? data.sesiones.map((s) => ({ ...s, estado: normalizeEstadoClient(s.estado) }))
+      : [];
     state.incidenciasSesiones = Array.isArray(data.incidenciasSesiones) ? data.incidenciasSesiones : [];
 
     poblarFiltros();
@@ -105,11 +107,12 @@
     const estado = document.getElementById('fEstado').value;
 
     return state.sesiones.filter(s => {
-      if (!estado && s.estado === 'Cancelada') return false;
+      const estadoSesion = normalizeEstadoClient(s.estado);
+      if (!estado && estadoSesion === 'Cancelada') return false;
       if (mes && !s.fecha.startsWith(mes)) return false;
       if (ponente && s.ponente !== ponente) return false;
       if (tipo && s.tipoSesion !== tipo) return false;
-      if (estado && s.estado !== estado) return false;
+      if (estado && estadoSesion !== normalizeEstadoClient(estado)) return false;
       return true;
     });
   }
@@ -121,13 +124,15 @@
       cont.innerHTML = '<div class="card">No hay sesiones con los filtros seleccionados.</div>';
       return;
     }
-    cont.innerHTML = sesiones.map(s => `
+    cont.innerHTML = sesiones.map(s => {
+      const estadoNorm = normalizeEstadoClient(s.estado);
+      return `
       <article class="sesion session-card estado-${escapeHtml(s.estado)}">
         <div class="session-card-header">
           <h4 class="session-title">${escapeHtml(s.tema)}</h4>
           <div class="session-badges">
             <span class="badge badge-type">${escapeHtml(s.tipoSesion)}</span>
-            <span class="badge badge-status badge-${escapeHtml(normalizeBadgeClass(s.estado))}">${escapeHtml(s.estado)}</span>
+            <span class="badge badge-status badge-${escapeHtml(normalizeBadgeClass(estadoNorm))}">${escapeHtml(estadoNorm)}</span>
           </div>
         </div>
         <div class="meta session-meta">
@@ -141,7 +146,16 @@
           <button class="btn" onclick="cancelarSesion('${escapeHtml(s.idSesion)}')">Cancelar</button>
         </div>
       </article>
-    `).join('');
+    `;
+    }).join('');
+  }
+
+  function normalizeEstadoClient(estado) {
+    const txt = String(estado ?? '').trim().toLowerCase();
+    if (txt === 'programada') return 'Programada';
+    if (txt === 'realizada') return 'Realizada';
+    if (txt === 'cancelada') return 'Cancelada';
+    return 'Programada';
   }
 
   function formatFechaLarga(fechaIso) {
