@@ -4,52 +4,98 @@
   document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
     const fMes = document.getElementById('fMes');
-    fMes.value = new Date().toISOString().slice(0, 7);
+    if (fMes) fMes.value = new Date().toISOString().slice(0, 7);
     cargarDatos();
   });
 
   function bindEvents() {
-    document.getElementById('btnNueva').addEventListener('click', () => abrirModal());
-    document.getElementById('btnCerrar').addEventListener('click', cerrarModal);
-    document.getElementById('formSesion').addEventListener('submit', guardarSesion);
-    document.getElementById('btnImprimir').addEventListener('click', () => window.print());
-    document.getElementById('btnResumen').addEventListener('click', copiarResumenMensual);
-    ['fMes','fPonente','fTipo','fEstado'].forEach((id) => document.getElementById(id).addEventListener('change', renderListado));
-    document.getElementById('ponente').addEventListener('change', autocompletarArea);
+    document.getElementById('btnNueva')?.addEventListener('click', () => abrirModal());
+    document.getElementById('btnCerrar')?.addEventListener('click', cerrarModal);
+    document.getElementById('formSesion')?.addEventListener('submit', guardarSesion);
+    document.getElementById('btnImprimir')?.addEventListener('click', () => window.print());
+    document.getElementById('btnResumen')?.addEventListener('click', copiarResumenMensual);
+    ['fMes', 'fPonente', 'fTipo', 'fEstado'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', renderListado);
+      else console.warn(`[bindEvents] No existe el selector ${id}`);
+    });
+    document.getElementById('ponente')?.addEventListener('change', autocompletarArea);
   }
 
   function cargarDatos() {
-    google.script.run.withSuccessHandler((data) => {
-      state = data || {};
-      state.profesionales = Array.isArray(state.profesionales) ? state.profesionales : [];
-      state.tiposSesion = Array.isArray(state.tiposSesion) ? state.tiposSesion : [];
-      state.estados = Array.isArray(state.estados) && state.estados.length
-        ? state.estados
-        : ['Programada', 'Confirmada', 'Pendiente', 'Cambiada', 'Cancelada', 'Realizada'];
-      state.sesiones = Array.isArray(state.sesiones) ? state.sesiones : [];
-      ocultarErrorMaestros();
-      poblarFiltros();
-      renderListado();
-      mostrarIncidenciasSesion();
-      if (!state.profesionales.length || !state.tiposSesion.length) {
-        mostrarErrorMaestros('No se pudieron cargar profesionales o tipos de sesión. Revise las pestañas Profesionales y TiposSesion.');
-      }
-    }).withFailureHandler(mostrarError).getInitialData();
+    google.script.run
+      .withSuccessHandler(handleInitialData)
+      .withFailureHandler(handleInitialDataError)
+      .getInitialData();
+  }
+
+  function handleInitialData(data) {
+    console.log('[getInitialData]', data);
+    if (!data || typeof data !== 'object') {
+      mostrarErrorMaestros('Respuesta inválida al cargar datos iniciales.');
+      return;
+    }
+    if (data.ok === false) {
+      mostrarErrorMaestros(data.message || 'No se pudieron cargar los datos maestros.');
+      if (data.diagnostics) console.warn('[getInitialData diagnostics]', data.diagnostics);
+    }
+
+    if (!Array.isArray(data.profesionales)) console.warn('[getInitialData] profesionales no es array');
+    if (!Array.isArray(data.tiposSesion)) console.warn('[getInitialData] tiposSesion no es array');
+    if (!Array.isArray(data.estados)) console.warn('[getInitialData] estados no es array');
+    if (!Array.isArray(data.sesiones)) console.warn('[getInitialData] sesiones no es array');
+
+    state.profesionales = Array.isArray(data.profesionales) ? data.profesionales : [];
+    state.tiposSesion = Array.isArray(data.tiposSesion) ? data.tiposSesion : [];
+    state.estados = Array.isArray(data.estados) && data.estados.length ? data.estados : ['Programada', 'Realizada', 'Cancelada'];
+    state.sesiones = Array.isArray(data.sesiones) ? data.sesiones : [];
+    state.incidenciasSesiones = Array.isArray(data.incidenciasSesiones) ? data.incidenciasSesiones : [];
+
+    poblarFiltros();
+    renderListado();
+    mostrarIncidenciasSesion();
+
+    if (!state.profesionales.length || !state.tiposSesion.length) {
+      mostrarErrorMaestros("No se pudieron cargar los datos maestros. Revise que existan las pestañas 'Profesionales' y 'TiposSesion', que sus encabezados sean correctos y que haya filas activas marcadas como 'Sí'.");
+      return;
+    }
+    ocultarErrorMaestros();
+  }
+
+  function handleInitialDataError(err) {
+    console.error('[getInitialDataError]', err);
+    mostrarErrorMaestros("No se pudieron cargar los datos maestros. Revise que existan las pestañas 'Profesionales' y 'TiposSesion', que sus encabezados sean correctos y que haya filas activas marcadas como 'Sí'.");
   }
 
   function poblarFiltros() {
-    fillSelect('fPonente', state.profesionales.map(p => p.nombre), true);
+    fillSelect('fPonente', state.profesionales.map((p) => p.nombre), true);
     fillSelect('fTipo', state.tiposSesion, true);
     fillSelect('fEstado', state.estados, true);
-    fillSelect('ponente', state.profesionales.map(p => p.nombre), false);
+    fillSelect('ponente', state.profesionales.map((p) => p.nombre), false);
     fillSelect('tipoSesion', state.tiposSesion, false);
     fillSelect('estado', state.estados, false);
   }
 
   function fillSelect(id, items, allowEmpty) {
     const el = document.getElementById(id);
-    const first = allowEmpty ? el.options[0]?.outerHTML || '<option value="">Todos</option>' : '<option value="">Seleccione</option>';
-    el.innerHTML = first + items.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (!el) {
+      console.warn(`[fillSelect] No existe el selector ${id}`);
+      return;
+    }
+    const defaultLabel = allowEmpty ? 'Todos' : 'Seleccione';
+    el.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = defaultLabel;
+    el.appendChild(opt);
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const val = typeof item === 'string' ? item : (item && item.nombre) ? item.nombre : '';
+      if (!val) return;
+      const option = document.createElement('option');
+      option.value = val;
+      option.textContent = val;
+      el.appendChild(option);
+    });
   }
 
   function getSesionesFiltradas() {
@@ -114,7 +160,6 @@
     abrirModal(sesion);
   }
 
-
   function normalizeHoraInput(value) {
     const txt = String(value ?? '').trim();
     const m = txt.match(/^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?$/);
@@ -133,8 +178,7 @@
 
   function mostrarIncidenciasSesion() {
     if (!Array.isArray(state.incidenciasSesiones) || !state.incidenciasSesiones.length) return;
-    console.warn(`Sesiones omitidas por datos inválidos:
-${state.incidenciasSesiones.join('\n')}`);
+    console.warn(`Sesiones omitidas por datos inválidos:\n${state.incidenciasSesiones.join('\n')}`);
     alert('Se cargaron las sesiones válidas. Algunas filas se omitieron por datos inválidos. Revisa la consola para más detalle.');
   }
 
@@ -217,7 +261,7 @@ ${state.incidenciasSesiones.join('\n')}`);
   function mostrarError(err) {
     const msg = err && err.message ? err.message : 'Ha ocurrido un error.';
     console.error('Error en la app:', msg, err);
-    mostrarErrorMaestros('No se pudieron cargar profesionales o tipos de sesión. Revise las pestañas Profesionales y TiposSesion.');
+    mostrarErrorMaestros("No se pudieron cargar los datos maestros. Revise que existan las pestañas 'Profesionales' y 'TiposSesion', que sus encabezados sean correctos y que haya filas activas marcadas como 'Sí'.");
     alert(msg);
   }
 
