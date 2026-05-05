@@ -122,25 +122,48 @@
       return;
     }
     cont.innerHTML = sesiones.map(s => `
-      <article class="sesion estado-${escapeHtml(s.estado)}">
-        <div class="top">
-          <div>
-            <h4>${escapeHtml(s.tema)}</h4>
-            <div class="meta">
-              <span><b>${escapeHtml(s.fecha)}</b> ${escapeHtml(s.hora)} · ${escapeHtml(String(s.duracionMin))} min</span>
-              <span>${escapeHtml(s.tipoSesion)} · ${escapeHtml(s.estado)}</span>
-              <span>Ponente: ${escapeHtml(s.ponente)}${s.area ? ' · Área: ' + escapeHtml(s.area) : ''}</span>
-              ${s.sustituto ? `<span>Sustituto: ${escapeHtml(s.sustituto)}</span>` : ''}
-            </div>
+      <article class="sesion session-card estado-${escapeHtml(s.estado)}">
+        <div class="session-card-header">
+          <h4 class="session-title">${escapeHtml(s.tema)}</h4>
+          <div class="session-badges">
+            <span class="badge badge-type">${escapeHtml(s.tipoSesion)}</span>
+            <span class="badge badge-status badge-${escapeHtml(normalizeBadgeClass(s.estado))}">${escapeHtml(s.estado)}</span>
           </div>
         </div>
-        <div class="row-actions">
+        <div class="meta session-meta">
+          <span class="session-datetime"><b>${escapeHtml(formatFechaLarga(s.fecha))}</b> · ${escapeHtml(s.hora)} · ${escapeHtml(String(s.duracionMin))} min</span>
+          <span>Ponente: ${escapeHtml(s.ponente)}${s.area ? ' · Área: ' + escapeHtml(s.area) : ''}</span>
+          ${s.sustituto ? `<span>Sustituto: ${escapeHtml(s.sustituto)}</span>` : ''}
+        </div>
+        <div class="row-actions session-actions">
           <button class="btn" onclick="editarSesion('${escapeHtml(s.idSesion)}')">Editar</button>
           <button class="btn" onclick="marcarRealizada('${escapeHtml(s.idSesion)}')">Realizada</button>
           <button class="btn" onclick="cancelarSesion('${escapeHtml(s.idSesion)}')">Cancelar</button>
         </div>
       </article>
     `).join('');
+  }
+
+  function formatFechaLarga(fechaIso) {
+    const m = String(fechaIso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return String(fechaIso ?? '');
+    const fecha = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (Number.isNaN(fecha.getTime())) return String(fechaIso ?? '');
+    return fecha.toLocaleDateString('es-ES', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+
+  function normalizeBadgeClass(value) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   function abrirModal(sesion) {
