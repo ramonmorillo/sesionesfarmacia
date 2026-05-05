@@ -1,8 +1,10 @@
 <script>
-  let state = { sesiones: [], profesionales: [], tiposSesion: [], estados: [] };
+  let state = { sesiones: [], profesionales: [], tiposSesion: [], estados: [], incidenciasSesiones: [] };
 
   document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
+    const fMes = document.getElementById('fMes');
+    fMes.value = new Date().toISOString().slice(0, 7);
     cargarDatos();
   });
 
@@ -21,6 +23,7 @@
       state = data;
       poblarFiltros();
       renderListado();
+      mostrarIncidenciasSesion();
     }).withFailureHandler(mostrarError).getInitialData();
   }
 
@@ -101,12 +104,44 @@
     abrirModal(sesion);
   }
 
+
+  function normalizeHoraInput(value) {
+    const txt = String(value ?? '').trim();
+    const m = txt.match(/^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?$/);
+    if (!m) throw new Error('Hora inválida. Use HH:mm (ej: 08:15).');
+
+    const hh = Number(m[1]);
+    const mm = m[2] === undefined ? 0 : Number(m[2]);
+    const ss = m[3] === undefined ? 0 : Number(m[3]);
+
+    if (![hh, mm, ss].every(Number.isInteger) || hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59) {
+      throw new Error('Hora inválida. Use HH:mm con valores entre 00:00 y 23:59.');
+    }
+
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+
+  function mostrarIncidenciasSesion() {
+    if (!Array.isArray(state.incidenciasSesiones) || !state.incidenciasSesiones.length) return;
+    console.warn(`Sesiones omitidas por datos inválidos:
+${state.incidenciasSesiones.join('\n')}`);
+    alert('Se cargaron las sesiones válidas. Algunas filas se omitieron por datos inválidos. Revisa la consola para más detalle.');
+  }
+
   function guardarSesion(e) {
     e.preventDefault();
+    let horaNormalizada;
+    try {
+      horaNormalizada = normalizeHoraInput(document.getElementById('hora').value);
+      document.getElementById('hora').value = horaNormalizada;
+    } catch (err) {
+      return mostrarError(err);
+    }
+
     const payload = {
       idSesion: document.getElementById('idSesion').value,
       fecha: document.getElementById('fecha').value,
-      hora: document.getElementById('hora').value,
+      hora: horaNormalizada,
       duracionMin: document.getElementById('duracionMin').value,
       tipoSesion: document.getElementById('tipoSesion').value,
       tema: document.getElementById('tema').value,
