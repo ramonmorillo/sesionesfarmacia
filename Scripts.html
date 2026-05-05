@@ -1,5 +1,5 @@
 <script>
-  let state = { sesiones: [], profesionales: [], tiposSesion: [], estados: [], incidenciasSesiones: [] };
+  let state = { sesiones: [], profesionales: [], tiposSesion: [], estados: [] };
 
   document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
@@ -38,7 +38,9 @@
     if (data.ok === false) {
       mostrarErrorMaestros(data.message || 'No se pudieron cargar los datos maestros.');
       if (data.diagnostics) console.warn('[getInitialData diagnostics]', data.diagnostics);
+      return;
     }
+    ocultarErrorMaestros();
 
     if (!Array.isArray(data.profesionales)) console.warn('[getInitialData] profesionales no es array');
     if (!Array.isArray(data.tiposSesion)) console.warn('[getInitialData] tiposSesion no es array');
@@ -51,17 +53,12 @@
     state.sesiones = Array.isArray(data.sesiones)
       ? data.sesiones.map((s) => ({ ...s, fecha: formatDateInputClient(s.fecha), hora: formatTimeInputClient(s.hora), estado: normalizeEstadoClient(s.estado) }))
       : [];
-    state.incidenciasSesiones = Array.isArray(data.incidenciasSesiones) ? data.incidenciasSesiones : [];
 
     poblarFiltros();
     renderListado();
-    mostrarIncidenciasSesion();
-
-    if (!state.profesionales.length || !state.tiposSesion.length) {
-      mostrarErrorMaestros("No se pudieron cargar los datos maestros. Revise que existan las pestañas 'Profesionales' y 'TiposSesion', que sus encabezados sean correctos y que haya filas activas marcadas como 'Sí'.");
-      return;
+    if (data.diagnostics && Array.isArray(data.diagnostics.duplicatedSessionIds) && data.diagnostics.duplicatedSessionIds.length) {
+      console.warn('[duplicatedSessionIds]', data.diagnostics.duplicatedSessionIds);
     }
-    ocultarErrorMaestros();
   }
 
   function handleInitialDataError(err) {
@@ -231,12 +228,6 @@
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   }
 
-  function mostrarIncidenciasSesion() {
-    if (!Array.isArray(state.incidenciasSesiones) || !state.incidenciasSesiones.length) return;
-    console.warn(`Sesiones omitidas por datos inválidos:\n${state.incidenciasSesiones.join('\n')}`);
-    alert('Se cargaron las sesiones válidas. Algunas filas se omitieron por datos inválidos. Revisa la consola para más detalle.');
-  }
-
   function guardarSesion(e) {
     e.preventDefault();
     let horaNormalizada;
@@ -265,24 +256,23 @@
     const fn = payload.idSesion ? 'updateSesion' : 'createSesion';
     google.script.run.withSuccessHandler((resp) => {
       if (resp && resp.diagnostics && Array.isArray(resp.diagnostics.duplicatedSessionIds) && resp.diagnostics.duplicatedSessionIds.length) {
-        console.warn('[duplicados detectados]', resp.diagnostics);
+        console.warn('[duplicatedSessionIds]', resp.diagnostics.duplicatedSessionIds);
       }
       cerrarModal();
       cargarDatos();
-      alert('Guardado correctamente.');
     }).withFailureHandler((err) => mostrarError(err, 'Error al guardar la sesión.'))[fn](payload);
   }
 
   function marcarRealizada(idSesion) {
     google.script.run.withSuccessHandler((resp) => {
-      if (resp && resp.diagnostics && resp.diagnostics.duplicatedSessionIds?.length) console.warn('[duplicados detectados]', resp.diagnostics);
+      if (resp && resp.diagnostics && resp.diagnostics.duplicatedSessionIds?.length) console.warn('[duplicatedSessionIds]', resp.diagnostics.duplicatedSessionIds);
       cargarDatos();
     }).withFailureHandler((err) => mostrarError(err, 'Error al marcar la sesión como realizada.')).marcarRealizada(idSesion);
   }
 
   function cancelarSesion(idSesion) {
     google.script.run.withSuccessHandler((resp) => {
-      if (resp && resp.diagnostics && resp.diagnostics.duplicatedSessionIds?.length) console.warn('[duplicados detectados]', resp.diagnostics);
+      if (resp && resp.diagnostics && resp.diagnostics.duplicatedSessionIds?.length) console.warn('[duplicatedSessionIds]', resp.diagnostics.duplicatedSessionIds);
       cargarDatos();
     }).withFailureHandler((err) => mostrarError(err, 'Error al cancelar la sesión.')).cancelarSesion(idSesion);
   }
