@@ -1,0 +1,25 @@
+<style>
+  :root{--bg:#f7f9fc;--text:#1f2937;--card:#fff;--primary:#1f6fb2;--border:#dbe3ef}
+  *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
+  .header{background:#fff;padding:18px;border-bottom:1px solid var(--border)}
+  .header h1{margin:0 0 6px;font-size:1.4rem}.header p{margin:0;color:#4b5563}
+  .container{padding:16px;max-width:1100px;margin:0 auto}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .btn{border:1px solid var(--border);background:#fff;padding:10px 12px;border-radius:8px;cursor:pointer}
+  .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px}
+  .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+  .field{display:flex;flex-direction:column;gap:6px}.field input,.field select,.field textarea{padding:8px;border:1px solid var(--border);border-radius:8px}
+  .listado{display:grid;gap:10px}
+  .sesion{background:#fff;border:1px solid var(--border);border-left:6px solid #9ca3af;padding:12px;border-radius:10px}
+  .sesion .top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .sesion h4{margin:0 0 4px}
+  .meta{font-size:.92rem;color:#4b5563;display:grid;gap:3px}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .estado-Programada{border-left-color:#7aa6d8}.estado-Confirmada{border-left-color:#6cbf84}.estado-Pendiente{border-left-color:#f6c85f}
+  .estado-Cambiada{border-left-color:#b39ddb}.estado-Cancelada{border-left-color:#ef9a9a}.estado-Realizada{border-left-color:#80cbc4}
+  dialog{border:none;border-radius:12px;max-width:780px;width:95%}
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.full{grid-column:1/-1}
+  .actions{display:flex;gap:8px;justify-content:flex-end}
+  .footer-note{font-size:.85rem;color:#6b7280;padding:20px;text-align:center}
+</style>

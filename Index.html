@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sesiones Clínicas</title>
+    <?!= include('Styles'); ?>
+  </head>
+  <body>
+    <header class="header">
+      <h1>Sesiones Clínicas - Servicio de Farmacia</h1>
+      <p>Planificación interna de sesiones clínicas, docentes y bibliográficas</p>
+    </header>
+
+    <main class="container">
+      <section class="toolbar">
+        <button class="btn primary" id="btnNueva">Nueva sesión</button>
+        <button class="btn" id="btnImprimir">Imprimir</button>
+        <button class="btn" id="btnResumen">Copiar resumen mensual</button>
+      </section>
+
+      <section class="filters card">
+        <div class="field"><label>Mes</label><input type="month" id="fMes" /></div>
+        <div class="field"><label>Ponente</label><select id="fPonente"><option value="">Todos</option></select></div>
+        <div class="field"><label>Tipo</label><select id="fTipo"><option value="">Todos</option></select></div>
+        <div class="field"><label>Estado</label><select id="fEstado"><option value="">Todos (sin canceladas)</option></select></div>
+      </section>
+
+      <section id="listado" class="listado"></section>
+    </main>
+
+    <dialog id="modalSesion">
+      <form id="formSesion" class="form-grid">
+        <h3 id="modalTitle">Nueva sesión</h3>
+        <input type="hidden" id="idSesion" />
+        <div class="field"><label>Fecha*</label><input type="date" id="fecha" required /></div>
+        <div class="field"><label>Hora*</label><input type="time" id="hora" required /></div>
+        <div class="field"><label>Duración (min)*</label><input type="number" min="1" id="duracionMin" required /></div>
+        <div class="field"><label>Tipo*</label><select id="tipoSesion" required></select></div>
+        <div class="field"><label>Tema*</label><input type="text" id="tema" required /></div>
+        <div class="field"><label>Ponente*</label><select id="ponente" required></select></div>
+        <div class="field"><label>Área</label><input type="text" id="area" /></div>
+        <div class="field"><label>Estado*</label><select id="estado" required></select></div>
+        <div class="field"><label>Sustituto</label><input type="text" id="sustituto" /></div>
+        <div class="field"><label>Enlace material</label><input type="url" id="enlaceMaterial" /></div>
+        <div class="field full"><label>Observaciones</label><textarea id="observaciones" rows="3"></textarea></div>
+        <div class="actions full">
+          <button type="submit" class="btn primary">Guardar</button>
+          <button type="button" class="btn" id="btnCerrar">Cerrar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <footer class="footer-note">
+      Herramienta interna organizativa. No debe incluir datos de pacientes ni información clínica identificable.
+    </footer>
+
+    <?!= include('Scripts'); ?>
+  </body>
+</html>
