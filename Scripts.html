@@ -20,10 +20,20 @@
 
   function cargarDatos() {
     google.script.run.withSuccessHandler((data) => {
-      state = data;
+      state = data || {};
+      state.profesionales = Array.isArray(state.profesionales) ? state.profesionales : [];
+      state.tiposSesion = Array.isArray(state.tiposSesion) ? state.tiposSesion : [];
+      state.estados = Array.isArray(state.estados) && state.estados.length
+        ? state.estados
+        : ['Programada', 'Confirmada', 'Pendiente', 'Cambiada', 'Cancelada', 'Realizada'];
+      state.sesiones = Array.isArray(state.sesiones) ? state.sesiones : [];
+      ocultarErrorMaestros();
       poblarFiltros();
       renderListado();
       mostrarIncidenciasSesion();
+      if (!state.profesionales.length || !state.tiposSesion.length) {
+        mostrarErrorMaestros('No se pudieron cargar profesionales o tipos de sesión. Revise las pestañas Profesionales y TiposSesion.');
+      }
     }).withFailureHandler(mostrarError).getInitialData();
   }
 
@@ -182,7 +192,34 @@ ${state.incidenciasSesiones.join('\n')}`);
     navigator.clipboard.writeText(texto).then(() => alert('Resumen copiado al portapapeles.')).catch(() => alert('No se pudo copiar automáticamente.'));
   }
 
-  function mostrarError(err) { alert(err && err.message ? err.message : 'Ha ocurrido un error.'); }
+  function mostrarErrorMaestros(msg) {
+    const main = document.querySelector('main.container');
+    if (!main) return;
+    let box = document.getElementById('errorMaestros');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'errorMaestros';
+      box.className = 'card';
+      box.style.background = '#fff4f4';
+      box.style.border = '1px solid #f2b8b5';
+      box.style.color = '#8a1c1a';
+      box.style.marginBottom = '12px';
+      main.prepend(box);
+    }
+    box.textContent = msg;
+  }
+
+  function ocultarErrorMaestros() {
+    const box = document.getElementById('errorMaestros');
+    if (box) box.remove();
+  }
+
+  function mostrarError(err) {
+    const msg = err && err.message ? err.message : 'Ha ocurrido un error.';
+    console.error('Error en la app:', msg, err);
+    mostrarErrorMaestros('No se pudieron cargar profesionales o tipos de sesión. Revise las pestañas Profesionales y TiposSesion.');
+    alert(msg);
+  }
 
   function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
