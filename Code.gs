@@ -27,7 +27,7 @@ function include(filename) {
 }
 
 function getInitialData() {
-  const diagnostics = { timestamp: new Date().toISOString(), sheetNamesFound: [], headers: {}, errors: [] };
+  const diagnostics = { timestamp: new Date().toISOString(), sheetNamesFound: [], headers: {}, errors: [], duplicatedSessionIds: [] };
   try {
     const ss = getSpreadsheet_();
     diagnostics.sheetNamesFound = ss.getSheets().map((s) => s.getName());
@@ -48,6 +48,7 @@ function getInitialData() {
     diagnostics.activeTiposSesion = tiposSesion.length;
     diagnostics.estados = ESTADOS_SESION.slice();
     diagnostics.incidenciasSesiones = sesionesResult.incidencias.length;
+    diagnostics.duplicatedSessionIds = sesionesResult.duplicatedSessionIds;
 
     return {
       ok: true,
@@ -181,14 +182,16 @@ function getTiposActivosFromSheet_(sheet) {
 
 function getSesionesFromSheet_(sheet) {
   const rows = getRowsAsObjects_(sheet, HEADERS.SESIONES);
-  const sesiones = [];
+  const sesionesById = {};
+  const duplicatesMap = {};
   const incidencias = [];
   rows.forEach((row, idx) => {
     try {
       const fecha = normalizeDate_(row.fecha);
       const hora = normalizeTime_(row.hora);
-      sesiones.push({
-        idSesion: normalizeText_(row.idSesion),
+      const idSesion = normalizeText_(row.idSesion);
+      const sesion = {
+        _rowNumber: idx + 2,
         fecha,
         hora,
         duracionMin: Number(row.duracionMin) || 0,
@@ -196,20 +199,36 @@ function getSesionesFromSheet_(sheet) {
         tema: normalizeText_(row.tema),
         ponente: normalizeText_(row.ponente),
         area: normalizeText_(row.area),
-        estado: normalizeText_(row.estado),
+        estado: normalizeEstado_(row.estado),
         sustituto: normalizeText_(row.sustituto),
         enlaceMaterial: normalizeText_(row.enlaceMaterial),
         observaciones: normalizeText_(row.observaciones),
         fechaCreacion: normalizeText_(row.fechaCreacion),
         ultimaModificacion: normalizeText_(row.ultimaModificacion),
         modificadoPor: normalizeText_(row.modificadoPor)
-      });
+      };
+      if (!idSesion) throw new Error('idSesion vacío.');
+      sesion.idSesion = idSesion;
+      const existing = sesionesById[idSesion];
+      if (!existing) {
+        sesionesById[idSesion] = sesion;
+      } else {
+        duplicatesMap[idSesion] = duplicatesMap[idSesion] || [];
+        if (!duplicatesMap[idSesion].length) duplicatesMap[idSesion].push(existing._rowNumber);
+        duplicatesMap[idSesion].push(sesion._rowNumber);
+        sesionesById[idSesion] = pickMostRecentSession_(existing, sesion);
+      }
     } catch (err) {
       incidencias.push(`Fila ${idx + 2}: ${err.message || err}`);
     }
   });
+  const sesiones = Object.keys(sesionesById).map((id) => {
+    const copy = { ...sesionesById[id] };
+    delete copy._rowNumber;
+    return copy;
+  });
   sesiones.sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
-  return { sesiones, incidencias };
+  return { sesiones, incidencias, duplicatedSessionIds: Object.keys(duplicatesMap) };
 }
 
 function normalizeTime_(value) {
@@ -264,7 +283,7 @@ function createSesion(payload) {
     tema: normalizeText_(payload.tema),
     ponente: normalizeText_(payload.ponente),
     area,
-    estado: normalizeText_(payload.estado),
+    estado: normalizeEstado_(payload.estado),
     sustituto: normalizeText_(payload.sustituto),
     enlaceMaterial: normalizeText_(payload.enlaceMaterial),
     observaciones: normalizeText_(payload.observaciones),
@@ -283,14 +302,8 @@ function updateSesion(payload) {
   if (!payload.idSesion) throw new Error('idSesion es obligatorio para editar.');
   const ss = getSpreadsheet_();
   const sheet = getSheetOrThrow_(ss, SHEET_NAMES.SESIONES);
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const idx = findHeaderIndexes_(headers);
-  let rowIndex = -1;
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][idx.idSesion]) === String(payload.idSesion)) { rowIndex = i + 1; break; }
-  }
-  if (rowIndex === -1) throw new Error('No se encontró la sesión a editar.');
+  const rowIndex = findSessionRowById_(sheet, payload.idSesion);
+  const headers = getSheetHeaders_(sheet);
   const oldRowArray = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
   const oldRow = rowArrayToObj_(headers, oldRowArray);
   const user = getUserEmail_();
@@ -303,7 +316,7 @@ function updateSesion(payload) {
     tema: normalizeText_(payload.tema),
     ponente: normalizeText_(payload.ponente),
     area: resolveArea_(payload.ponente, payload.area),
-    estado: normalizeText_(payload.estado),
+    estado: normalizeEstado_(payload.estado),
     sustituto: normalizeText_(payload.sustituto),
     enlaceMaterial: normalizeText_(payload.enlaceMaterial),
     observaciones: normalizeText_(payload.observaciones),
@@ -318,25 +331,7 @@ function marcarRealizada(idSesion) { return cambiarEstado_(idSesion, 'Realizada'
 function cancelarSesion(idSesion) { return cambiarEstado_(idSesion, 'Cancelada', 'Cancelación de sesión'); }
 
 function cambiarEstado_(idSesion, nuevoEstado, motivo) {
-  if (!idSesion) throw new Error('idSesion es obligatorio.');
-  const ss = getSpreadsheet_();
-  const sheet = getSheetOrThrow_(ss, SHEET_NAMES.SESIONES);
-  const values = sheet.getDataRange().getValues();
-  const idx = findHeaderIndexes_(values[0]);
-  const user = getUserEmail_();
-
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][idx.idSesion]) === String(idSesion)) {
-      const rowIndex = i + 1;
-      const oldEstado = values[i][idx.estado];
-      sheet.getRange(rowIndex, idx.estado + 1).setValue(nuevoEstado);
-      sheet.getRange(rowIndex, idx.ultimaModificacion + 1).setValue(formatDateTime_(new Date()));
-      sheet.getRange(rowIndex, idx.modificadoPor + 1).setValue(user);
-      logCambio_(idSesion, 'estado', oldEstado, nuevoEstado, user, motivo);
-      return { ok: true };
-    }
-  }
-  throw new Error('No se encontró la sesión.');
+  return updateSessionById_(idSesion, { estado: normalizeEstado_(nuevoEstado) }, motivo);
 }
 
 function validateSesion_(payload, isEdit) {
@@ -347,6 +342,7 @@ function validateSesion_(payload, isEdit) {
   normalizeDate_(payload.fecha);
   normalizeTime_(payload.hora);
   if (isEdit && !payload.idSesion) throw new Error('idSesion es obligatorio.');
+  normalizeEstado_(payload.estado);
 }
 
 function getUserEmail_() { return Session.getActiveUser().getEmail() || 'usuario_no_identificado'; }
@@ -400,4 +396,96 @@ function generateIdSesion_(fechaStr) {
   const sameYear = sesiones.filter((s) => String(s.idSesion).startsWith(`SES-${year}-`));
   const maxSeq = sameYear.reduce((max, s) => Math.max(max, Number(String(s.idSesion).split('-')[2]) || 0), 0);
   return `SES-${year}-${String(maxSeq + 1).padStart(3, '0')}`;
+}
+
+function normalizeEstado_(estado) {
+  const txt = normalizeText_(estado).toLowerCase();
+  if (txt === 'programada') return 'Programada';
+  if (txt === 'realizada') return 'Realizada';
+  if (txt === 'cancelada') return 'Cancelada';
+  throw new Error(`Estado inválido: ${estado}. Valores permitidos: Programada, Realizada, Cancelada.`);
+}
+
+function findSessionRowById_(sheet, idSesion) {
+  const idBuscado = normalizeText_(idSesion);
+  if (!idBuscado) throw new Error('idSesion es obligatorio.');
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) throw new Error('No hay sesiones registradas.');
+  const idx = findHeaderIndexes_(values[0]);
+  if (idx.idSesion === undefined) throw new Error("No existe la columna 'idSesion' en Sesiones.");
+  const matches = [];
+  for (let i = 1; i < values.length; i++) {
+    if (normalizeText_(values[i][idx.idSesion]) === idBuscado) matches.push(i + 1);
+  }
+  if (!matches.length) throw new Error(`No se encontró la sesión con idSesion ${idBuscado}.`);
+  if (matches.length > 1) {
+    console.error(`[findSessionRowById_] id duplicado detectado para ${idBuscado}. Filas: ${matches.join(', ')}`);
+    throw new Error(`Se detectaron filas duplicadas para idSesion ${idBuscado}. Revise debugDuplicateSessions().`);
+  }
+  return matches[0];
+}
+
+function updateSessionById_(idSesion, patch, motivoCambio) {
+  const ss = getSpreadsheet_();
+  const sheet = getSheetOrThrow_(ss, SHEET_NAMES.SESIONES);
+  const rowIndex = findSessionRowById_(sheet, idSesion);
+  const headers = getSheetHeaders_(sheet);
+  const oldRowArray = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
+  const oldRow = rowArrayToObj_(headers, oldRowArray);
+  const user = getUserEmail_();
+  const updated = { ...oldRow };
+  Object.keys(patch || {}).forEach((key) => {
+    if (key === 'estado') updated[key] = normalizeEstado_(patch[key]);
+    else updated[key] = patch[key];
+  });
+  updated.ultimaModificacion = formatDateTime_(new Date());
+  updated.modificadoPor = user;
+  sheet.getRange(rowIndex, 1, 1, headers.length).setValues([headers.map((h) => updated[h])]);
+  logCambiosBatch_(normalizeText_(idSesion), oldRow, updated, motivoCambio || 'Actualización de sesión', user);
+  return { ok: true };
+}
+
+function pickMostRecentSession_(a, b) {
+  const aTime = parseDateTimeSafe_(a.ultimaModificacion);
+  const bTime = parseDateTimeSafe_(b.ultimaModificacion);
+  if (aTime && bTime) return bTime >= aTime ? b : a;
+  if (bTime) return b;
+  if (aTime) return a;
+  return b._rowNumber >= a._rowNumber ? b : a;
+}
+
+function parseDateTimeSafe_(value) {
+  const txt = normalizeText_(value);
+  if (!txt) return null;
+  const d = new Date(txt.replace(' ', 'T'));
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+
+function debugDuplicateSessions() {
+  const ss = getSpreadsheet_();
+  const sheet = getSheetOrThrow_(ss, SHEET_NAMES.SESIONES);
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return { ok: true, totalRows: 0, totalSessions: 0, duplicatedIds: [] };
+  const idx = findHeaderIndexes_(values[0]);
+  const byId = {};
+  for (let i = 1; i < values.length; i++) {
+    const idSesion = normalizeText_(values[i][idx.idSesion]);
+    if (!idSesion) continue;
+    byId[idSesion] = byId[idSesion] || [];
+    byId[idSesion].push({
+      row: i + 1,
+      estado: normalizeEstado_(values[i][idx.estado] || 'Programada'),
+      ultimaModificacion: normalizeText_(values[i][idx.ultimaModificacion])
+    });
+  }
+  const duplicatedIds = Object.keys(byId).filter((id) => byId[id].length > 1).map((id) => ({
+    idSesion: id,
+    rows: byId[id].map((x) => x.row),
+    estados: Array.from(new Set(byId[id].map((x) => x.estado))),
+    ultimaModificacion: byId[id].map((x) => x.ultimaModificacion),
+    recomendacion: 'Revisar y limpiar manualmente en la pestaña Sesiones, conservando la fila vigente más reciente.'
+  }));
+  const result = { ok: true, totalRows: values.length - 1, totalSessions: Object.keys(byId).length, duplicatedIds };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
 }
