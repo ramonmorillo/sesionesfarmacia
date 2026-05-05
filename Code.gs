@@ -25,18 +25,25 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-function getInitialData() {
-  const sesionesResult = getSesiones_();
-  const profesionales = getProfesionalesActivos_();
-  const tiposSesion = getTiposActivos_();
+const ESTADOS_SESION = ['Programada', 'Confirmada', 'Pendiente', 'Cambiada', 'Cancelada', 'Realizada'];
 
-  return {
-    sesiones: sesionesResult.sesiones,
-    incidenciasSesiones: sesionesResult.incidencias,
-    profesionales,
-    tiposSesion,
-    estados: ['Programada', 'Confirmada', 'Pendiente', 'Cambiada', 'Cancelada', 'Realizada']
-  };
+function getInitialData() {
+  try {
+    const sesionesResult = getSesiones_();
+    const profesionales = getProfesionalesActivos_();
+    const tiposSesion = getTiposActivos_();
+
+    return {
+      sesiones: sesionesResult.sesiones,
+      incidenciasSesiones: sesionesResult.incidencias,
+      profesionales,
+      tiposSesion,
+      estados: ESTADOS_SESION
+    };
+  } catch (err) {
+    Logger.log(`Error en getInitialData: ${err && err.message ? err.message : err}`);
+    throw err;
+  }
 }
 
 function createSesion(payload) {
@@ -199,32 +206,59 @@ function getSesiones_() {
 }
 
 function getProfesionalesActivos_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.PROFESIONALES);
-  if (!sheet) throw new Error('No existe la pestaña Profesionales.');
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.PROFESIONALES);
+    if (!sheet) throw new Error('No existe la pestaña Profesionales.');
 
-  const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-  const headers = values[0];
+    const values = sheet.getDataRange().getValues();
+    if (values.length < 2) return [];
 
-  return values.slice(1)
-    .filter((row) => row.some((c) => String(c).trim() !== ''))
-    .map((row) => rowArrayToObj_(headers, row))
-    .filter((p) => isActivo_(p.activo));
+    const idx = getHeaderIndexMap_(values[0]);
+    if ([idx.nombre, idx.area, idx.email, idx.activo].some((v) => v === undefined)) {
+      throw new Error('Encabezados inválidos en Profesionales.');
+    }
+
+    return values.slice(1)
+      .filter((row) => row.some((c) => cleanText_(c) !== ''))
+      .map((row) => ({
+        nombre: cleanText_(row[idx.nombre]),
+        area: cleanText_(row[idx.area]),
+        email: cleanText_(row[idx.email]),
+        activo: row[idx.activo]
+      }))
+      .filter((p) => p.nombre && isActivo_(p.activo))
+      .map((p) => ({ nombre: p.nombre, area: p.area, email: p.email }));
+  } catch (err) {
+    Logger.log(`Error leyendo Profesionales: ${err && err.message ? err.message : err}`);
+    return [];
+  }
 }
 
 function getTiposActivos_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.TIPOS);
-  if (!sheet) throw new Error('No existe la pestaña TiposSesion.');
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.TIPOS);
+    if (!sheet) throw new Error('No existe la pestaña TiposSesion.');
 
-  const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-  const headers = values[0];
+    const values = sheet.getDataRange().getValues();
+    if (values.length < 2) return [];
 
-  return values.slice(1)
-    .filter((row) => row.some((c) => String(c).trim() !== ''))
-    .map((row) => rowArrayToObj_(headers, row))
-    .filter((t) => isActivo_(t.activo))
-    .map((t) => t.tipoSesion);
+    const idx = getHeaderIndexMap_(values[0]);
+    if ([idx.tipoSesion, idx.activo].some((v) => v === undefined)) {
+      throw new Error('Encabezados inválidos en TiposSesion.');
+    }
+
+    return values.slice(1)
+      .filter((row) => row.some((c) => cleanText_(c) !== ''))
+      .map((row) => ({
+        tipoSesion: cleanText_(row[idx.tipoSesion]),
+        activo: row[idx.activo]
+      }))
+      .filter((t) => t.tipoSesion && isActivo_(t.activo))
+      .map((t) => t.tipoSesion);
+  } catch (err) {
+    Logger.log(`Error leyendo TiposSesion: ${err && err.message ? err.message : err}`);
+    return [];
+  }
 }
 
 function generateIdSesion_(fechaStr) {
@@ -314,7 +348,19 @@ function cleanText_(v) {
 
 function isActivo_(v) {
   const normalized = String(v === true ? 'true' : v || '').trim().toLowerCase();
-  return ['sí', 'si', 'true'].includes(normalized);
+  return ['sí', 'si', 's', 'true', '1'].includes(normalized);
+}
+
+function getHeaderIndexMap_(headersRow) {
+  const normalizedHeaders = headersRow.map((h) => cleanText_(h).toLowerCase());
+  const idx = {};
+
+  ['nombre', 'area', 'email', 'activo', 'tipoSesion'].forEach((headerName) => {
+    const pos = normalizedHeaders.indexOf(headerName.toLowerCase());
+    if (pos !== -1) idx[headerName] = pos;
+  });
+
+  return idx;
 }
 
 function rowArrayToObj_(headers, row) {
