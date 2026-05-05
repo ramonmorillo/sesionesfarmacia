@@ -1,0 +1,155 @@
+<script>
+  let state = { sesiones: [], profesionales: [], tiposSesion: [], estados: [] };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    bindEvents();
+    cargarDatos();
+  });
+
+  function bindEvents() {
+    document.getElementById('btnNueva').addEventListener('click', () => abrirModal());
+    document.getElementById('btnCerrar').addEventListener('click', cerrarModal);
+    document.getElementById('formSesion').addEventListener('submit', guardarSesion);
+    document.getElementById('btnImprimir').addEventListener('click', () => window.print());
+    document.getElementById('btnResumen').addEventListener('click', copiarResumenMensual);
+    ['fMes','fPonente','fTipo','fEstado'].forEach((id) => document.getElementById(id).addEventListener('change', renderListado));
+    document.getElementById('ponente').addEventListener('change', autocompletarArea);
+  }
+
+  function cargarDatos() {
+    google.script.run.withSuccessHandler((data) => {
+      state = data;
+      poblarFiltros();
+      renderListado();
+    }).withFailureHandler(mostrarError).getInitialData();
+  }
+
+  function poblarFiltros() {
+    fillSelect('fPonente', state.profesionales.map(p => p.nombre), true);
+    fillSelect('fTipo', state.tiposSesion, true);
+    fillSelect('fEstado', state.estados, true);
+    fillSelect('ponente', state.profesionales.map(p => p.nombre), false);
+    fillSelect('tipoSesion', state.tiposSesion, false);
+    fillSelect('estado', state.estados, false);
+  }
+
+  function fillSelect(id, items, allowEmpty) {
+    const el = document.getElementById(id);
+    const first = allowEmpty ? el.options[0]?.outerHTML || '<option value="">Todos</option>' : '<option value="">Seleccione</option>';
+    el.innerHTML = first + items.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+  }
+
+  function getSesionesFiltradas() {
+    const mes = document.getElementById('fMes').value;
+    const ponente = document.getElementById('fPonente').value;
+    const tipo = document.getElementById('fTipo').value;
+    const estado = document.getElementById('fEstado').value;
+
+    return state.sesiones.filter(s => {
+      if (!estado && s.estado === 'Cancelada') return false;
+      if (mes && !s.fecha.startsWith(mes)) return false;
+      if (ponente && s.ponente !== ponente) return false;
+      if (tipo && s.tipoSesion !== tipo) return false;
+      if (estado && s.estado !== estado) return false;
+      return true;
+    });
+  }
+
+  function renderListado() {
+    const cont = document.getElementById('listado');
+    const sesiones = getSesionesFiltradas();
+    if (!sesiones.length) {
+      cont.innerHTML = '<div class="card">No hay sesiones con los filtros seleccionados.</div>';
+      return;
+    }
+    cont.innerHTML = sesiones.map(s => `
+      <article class="sesion estado-${escapeHtml(s.estado)}">
+        <div class="top">
+          <div>
+            <h4>${escapeHtml(s.tema)}</h4>
+            <div class="meta">
+              <span><b>${escapeHtml(s.fecha)}</b> ${escapeHtml(s.hora)} · ${escapeHtml(String(s.duracionMin))} min</span>
+              <span>${escapeHtml(s.tipoSesion)} · ${escapeHtml(s.estado)}</span>
+              <span>Ponente: ${escapeHtml(s.ponente)}${s.area ? ' · Área: ' + escapeHtml(s.area) : ''}</span>
+              ${s.sustituto ? `<span>Sustituto: ${escapeHtml(s.sustituto)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="row-actions">
+          <button class="btn" onclick="editarSesion('${escapeHtml(s.idSesion)}')">Editar</button>
+          <button class="btn" onclick="marcarRealizada('${escapeHtml(s.idSesion)}')">Realizada</button>
+          <button class="btn" onclick="cancelarSesion('${escapeHtml(s.idSesion)}')">Cancelar</button>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  function abrirModal(sesion) {
+    document.getElementById('modalTitle').textContent = sesion ? 'Editar sesión' : 'Nueva sesión';
+    document.getElementById('formSesion').reset();
+    document.getElementById('idSesion').value = sesion?.idSesion || '';
+    ['fecha','hora','duracionMin','tipoSesion','tema','ponente','area','estado','sustituto','enlaceMaterial','observaciones']
+      .forEach((k) => document.getElementById(k).value = sesion?.[k] || '');
+    document.getElementById('modalSesion').showModal();
+  }
+
+  function cerrarModal() { document.getElementById('modalSesion').close(); }
+
+  function editarSesion(idSesion) {
+    const sesion = state.sesiones.find(s => s.idSesion === idSesion);
+    if (!sesion) return alert('Sesión no encontrada.');
+    abrirModal(sesion);
+  }
+
+  function guardarSesion(e) {
+    e.preventDefault();
+    const payload = {
+      idSesion: document.getElementById('idSesion').value,
+      fecha: document.getElementById('fecha').value,
+      hora: document.getElementById('hora').value,
+      duracionMin: document.getElementById('duracionMin').value,
+      tipoSesion: document.getElementById('tipoSesion').value,
+      tema: document.getElementById('tema').value,
+      ponente: document.getElementById('ponente').value,
+      area: document.getElementById('area').value,
+      estado: document.getElementById('estado').value,
+      sustituto: document.getElementById('sustituto').value,
+      enlaceMaterial: document.getElementById('enlaceMaterial').value,
+      observaciones: document.getElementById('observaciones').value
+    };
+
+    const fn = payload.idSesion ? 'updateSesion' : 'createSesion';
+    google.script.run.withSuccessHandler(() => {
+      cerrarModal();
+      cargarDatos();
+      alert('Guardado correctamente.');
+    }).withFailureHandler(mostrarError)[fn](payload);
+  }
+
+  function marcarRealizada(idSesion) {
+    google.script.run.withSuccessHandler(cargarDatos).withFailureHandler(mostrarError).marcarRealizada(idSesion);
+  }
+
+  function cancelarSesion(idSesion) {
+    google.script.run.withSuccessHandler(cargarDatos).withFailureHandler(mostrarError).cancelarSesion(idSesion);
+  }
+
+  function autocompletarArea() {
+    const ponente = document.getElementById('ponente').value;
+    const p = state.profesionales.find(x => x.nombre === ponente);
+    if (p && p.area) document.getElementById('area').value = p.area;
+  }
+
+  function copiarResumenMensual() {
+    const sesiones = getSesionesFiltradas();
+    if (!sesiones.length) return alert('No hay sesiones para resumir.');
+    const texto = sesiones.map(s => `${s.fecha} ${s.hora} | ${s.tipoSesion} | ${s.tema} | ${s.ponente} | ${s.estado}`).join('\n');
+    navigator.clipboard.writeText(texto).then(() => alert('Resumen copiado al portapapeles.')).catch(() => alert('No se pudo copiar automáticamente.'));
+  }
+
+  function mostrarError(err) { alert(err && err.message ? err.message : 'Ha ocurrido un error.'); }
+
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>'"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  }
+</script>
