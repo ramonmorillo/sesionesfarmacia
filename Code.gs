@@ -26,12 +26,13 @@ function include(filename) {
 }
 
 function getInitialData() {
-  const sesiones = getSesiones_();
+  const sesionesResult = getSesiones_();
   const profesionales = getProfesionalesActivos_();
   const tiposSesion = getTiposActivos_();
 
   return {
-    sesiones,
+    sesiones: sesionesResult.sesiones,
+    incidenciasSesiones: sesionesResult.incidencias,
     profesionales,
     tiposSesion,
     estados: ['Programada', 'Confirmada', 'Pendiente', 'Cambiada', 'Cancelada', 'Realizada']
@@ -170,19 +171,31 @@ function getSesiones_() {
   if (!sheet) throw new Error('No existe la pestaña Sesiones.');
 
   const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
+  if (values.length < 2) return { sesiones: [], incidencias: [] };
   const headers = values[0];
+  const sesiones = [];
+  const incidencias = [];
 
-  return values.slice(1)
-    .filter((row) => row.some((c) => String(c).trim() !== ''))
-    .map((row) => rowArrayToObj_(headers, row))
-    .map((s) => ({
-      ...s,
-      fecha: normalizeDate_(s.fecha),
-      hora: normalizeHora_(s.hora),
-      duracionMin: Number(s.duracionMin) || 0
-    }))
-    .sort((a, b) => (a.fecha + ' ' + a.hora).localeCompare(b.fecha + ' ' + b.hora));
+  values.slice(1).forEach((row, idx) => {
+    if (!row.some((c) => String(c).trim() !== '')) return;
+    try {
+      const s = rowArrayToObj_(headers, row);
+      sesiones.push({
+        ...s,
+        fecha: normalizeDate_(s.fecha),
+        hora: normalizeHora_(s.hora),
+        duracionMin: Number(s.duracionMin) || 0
+      });
+    } catch (err) {
+      const rowNumber = idx + 2;
+      const msg = `Fila ${rowNumber}: ${err && err.message ? err.message : 'Dato inválido'}`;
+      incidencias.push(msg);
+      Logger.log(`Sesión omitida por validación: ${msg}`);
+    }
+  });
+
+  sesiones.sort((a, b) => (a.fecha + ' ' + a.hora).localeCompare(b.fecha + ' ' + b.hora));
+  return { sesiones, incidencias };
 }
 
 function getProfesionalesActivos_() {
@@ -216,7 +229,7 @@ function getTiposActivos_() {
 
 function generateIdSesion_(fechaStr) {
   const year = String(fechaStr).slice(0, 4);
-  const sesiones = getSesiones_();
+  const sesiones = getSesiones_().sesiones;
   const sameYear = sesiones.filter((s) => String(s.idSesion).startsWith(`SES-${year}-`));
   const maxSeq = sameYear.reduce((max, s) => {
     const parts = String(s.idSesion).split('-');
@@ -256,10 +269,38 @@ function normalizeDate_(value) {
 }
 
 function normalizeHora_(value) {
-  const txt = String(value || '').trim();
-  const m = txt.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-  if (!m) throw new Error('Hora inválida. Debe tener formato HH:mm.');
-  return `${m[1]}:${m[2]}`;
+  if (value === null || value === undefined || cleanText_(value) === '') {
+    throw new Error('Hora inválida. Debe tener formato HH:mm.');
+  }
+
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value)) {
+    return Utilities.formatDate(value, TZ, 'HH:mm');
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const totalMinutes = Math.round(value * 24 * 60);
+    const dayMinutes = 24 * 60;
+    const normalizedMinutes = ((totalMinutes % dayMinutes) + dayMinutes) % dayMinutes;
+    const hh = String(Math.floor(normalizedMinutes / 60)).padStart(2, '0');
+    const mm = String(normalizedMinutes % 60).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
+  const txt = String(value).trim();
+  const m = txt.match(/^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?$/);
+  if (!m) {
+    throw new Error('Hora inválida. Use HH:mm (ej: 08:15).');
+  }
+
+  const hh = Number(m[1]);
+  const mm = m[2] === undefined ? 0 : Number(m[2]);
+  const ss = m[3] === undefined ? 0 : Number(m[3]);
+
+  if (![hh, mm, ss].every(Number.isInteger) || hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59) {
+    throw new Error('Hora inválida. Use HH:mm con valores entre 00:00 y 23:59.');
+  }
+
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
 function getUserEmail_() {
