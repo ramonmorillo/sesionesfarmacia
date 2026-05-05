@@ -16,6 +16,23 @@
   .sesion h4{margin:0 0 4px}
   .meta{font-size:.92rem;color:#4b5563;display:grid;gap:3px}
   .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .session-card{padding:10px 12px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+  .session-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+  .session-title{margin:0;font-size:1.01rem;line-height:1.35;color:#111827}
+  .session-meta{margin-top:7px;gap:4px}
+  .session-datetime{font-size:.94rem;color:#1f2937}
+  .session-badges{display:flex;gap:6px;flex-wrap:wrap}
+  .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:.78rem;font-weight:600;line-height:1.2;border:1px solid transparent}
+  .badge-type{background:#edf3fb;color:#1f4f7e;border-color:#d3e2f3}
+  .badge-status{background:#f3f4f6;color:#374151;border-color:#e5e7eb}
+  .badge-programada{background:#eef6ff;color:#245c99;border-color:#cfe1f7}
+  .badge-realizada{background:#ecf8f0;color:#1d6d43;border-color:#c6e9d3}
+  .badge-cancelada{background:#fdf0f1;color:#9b1c24;border-color:#f2ced1}
+  .session-actions{justify-content:flex-end;align-items:center}
+  .session-actions .btn{padding:8px 11px;font-size:.88rem}
+  @media (max-width: 680px){
+    .session-actions{justify-content:flex-start}
+  }
   .estado-Programada{border-left-color:#7aa6d8}.estado-Confirmada{border-left-color:#6cbf84}.estado-Pendiente{border-left-color:#f6c85f}
   .estado-Cambiada{border-left-color:#b39ddb}.estado-Cancelada{border-left-color:#ef9a9a}.estado-Realizada{border-left-color:#80cbc4}
   dialog{border:none;border-radius:12px;max-width:780px;width:95%}
