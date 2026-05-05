@@ -25,14 +25,20 @@ function getInitialData() {
     diagnostics.sheetNamesFound = ss.getSheets().map((s) => s.getName());
     const profesionales = getProfesionalesActivosFromSheet_(getSheetOrThrow_(ss, SHEET_NAMES.PROFESIONALES));
     const tiposSesion = getTiposActivosFromSheet_(getSheetOrThrow_(ss, SHEET_NAMES.TIPOS));
-    const sesionesResult = getSesionesFromSheet_(getSheetOrThrow_(ss, SHEET_NAMES.SESIONES));
+    let sesionesResult = { sesiones: [], incidencias: [], duplicatedSessionIds: [], duplicates: [] };
+    try {
+      sesionesResult = getSesionesFromSheet_(getSheetOrThrow_(ss, SHEET_NAMES.SESIONES));
+    } catch (sessionErr) {
+      diagnostics.errors.push(sessionErr && sessionErr.message ? sessionErr.message : String(sessionErr));
+      return { ok: false, profesionales, tiposSesion, estados: ESTADOS_SESION.slice(), sesiones: [], diagnostics, message: "No se pudieron cargar las sesiones. Revise la pestaña 'Sesiones' y sus encabezados." };
+    }
     diagnostics.duplicatedSessionIds = sesionesResult.duplicatedSessionIds;
     diagnostics.duplicatedSessions = sesionesResult.duplicates;
-    return { ok: true, profesionales, tiposSesion, estados: ESTADOS_SESION.slice(), sesiones: sesionesResult.sesiones, incidenciasSesiones: sesionesResult.incidencias, diagnostics };
+    return { ok: true, profesionales, tiposSesion, estados: ESTADOS_SESION.slice(), sesiones: sesionesResult.sesiones, diagnostics, message: "" };
   } catch (err) {
     diagnostics.errors.push(err && err.message ? err.message : String(err));
     console.error('[getInitialData] error', err);
-    return { ok: false, profesionales: [], tiposSesion: [], estados: ESTADOS_SESION.slice(), sesiones: [], incidenciasSesiones: [], message: "No se pudieron cargar los datos maestros. Revise las pestañas 'Profesionales' y 'TiposSesion', sus encabezados y filas activas ('Sí').", diagnostics };
+    return { ok: false, profesionales: [], tiposSesion: [], estados: ESTADOS_SESION.slice(), sesiones: [], message: "No se pudieron cargar los datos maestros. Revise que existan las pestañas 'Profesionales' y 'TiposSesion', que sus encabezados sean correctos y que haya filas activas marcadas como 'Sí'.", diagnostics };
   }
 }
 
