@@ -49,7 +49,7 @@
     state.tiposSesion = Array.isArray(data.tiposSesion) ? data.tiposSesion : [];
     state.estados = Array.isArray(data.estados) && data.estados.length ? data.estados : ['Programada', 'Realizada', 'Cancelada'];
     state.sesiones = Array.isArray(data.sesiones)
-      ? data.sesiones.map((s) => ({ ...s, estado: normalizeEstadoClient(s.estado) }))
+      ? data.sesiones.map((s) => ({ ...s, fecha: formatDateInputClient(s.fecha), hora: formatTimeInputClient(s.hora), estado: normalizeEstadoClient(s.estado) }))
       : [];
     state.incidenciasSesiones = Array.isArray(data.incidenciasSesiones) ? data.incidenciasSesiones : [];
 
@@ -184,8 +184,10 @@
     document.getElementById('modalTitle').textContent = sesion ? 'Editar sesión' : 'Nueva sesión';
     document.getElementById('formSesion').reset();
     document.getElementById('idSesion').value = sesion?.idSesion || '';
-    ['fecha','hora','duracionMin','tipoSesion','tema','ponente','area','estado','sustituto','enlaceMaterial','observaciones']
+    ['duracionMin','tipoSesion','tema','ponente','area','estado','sustituto','enlaceMaterial','observaciones']
       .forEach((k) => document.getElementById(k).value = sesion?.[k] || '');
+    document.getElementById('fecha').value = sesion ? formatDateInputClient(sesion.fecha) : '';
+    document.getElementById('hora').value = sesion ? formatTimeInputClient(sesion.hora) : '';
     document.getElementById('modalSesion').showModal();
   }
 
@@ -197,6 +199,22 @@
     abrirModal(sesion);
   }
 
+
+  function formatDateInputClient(value) {
+    const txt = String(value ?? '').trim();
+    const m = txt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    const d = new Date(txt);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  function formatTimeInputClient(value) {
+    const txt = String(value ?? '').trim();
+    const m = txt.match(/^(\d{1,2}):(\d{1,2})/);
+    if (m) return `${String(Number(m[1])).padStart(2,'0')}:${String(Number(m[2])).padStart(2,'0')}`;
+    return '';
+  }
   function normalizeHoraInput(value) {
     const txt = String(value ?? '').trim();
     const m = txt.match(/^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?$/);
@@ -245,19 +263,28 @@
     };
 
     const fn = payload.idSesion ? 'updateSesion' : 'createSesion';
-    google.script.run.withSuccessHandler(() => {
+    google.script.run.withSuccessHandler((resp) => {
+      if (resp && resp.diagnostics && Array.isArray(resp.diagnostics.duplicatedSessionIds) && resp.diagnostics.duplicatedSessionIds.length) {
+        console.warn('[duplicados detectados]', resp.diagnostics);
+      }
       cerrarModal();
       cargarDatos();
       alert('Guardado correctamente.');
-    }).withFailureHandler(mostrarError)[fn](payload);
+    }).withFailureHandler((err) => mostrarError(err, 'Error al guardar la sesión.'))[fn](payload);
   }
 
   function marcarRealizada(idSesion) {
-    google.script.run.withSuccessHandler(cargarDatos).withFailureHandler(mostrarError).marcarRealizada(idSesion);
+    google.script.run.withSuccessHandler((resp) => {
+      if (resp && resp.diagnostics && resp.diagnostics.duplicatedSessionIds?.length) console.warn('[duplicados detectados]', resp.diagnostics);
+      cargarDatos();
+    }).withFailureHandler((err) => mostrarError(err, 'Error al marcar la sesión como realizada.')).marcarRealizada(idSesion);
   }
 
   function cancelarSesion(idSesion) {
-    google.script.run.withSuccessHandler(cargarDatos).withFailureHandler(mostrarError).cancelarSesion(idSesion);
+    google.script.run.withSuccessHandler((resp) => {
+      if (resp && resp.diagnostics && resp.diagnostics.duplicatedSessionIds?.length) console.warn('[duplicados detectados]', resp.diagnostics);
+      cargarDatos();
+    }).withFailureHandler((err) => mostrarError(err, 'Error al cancelar la sesión.')).cancelarSesion(idSesion);
   }
 
   function autocompletarArea() {
@@ -295,10 +322,9 @@
     if (box) box.remove();
   }
 
-  function mostrarError(err) {
-    const msg = err && err.message ? err.message : 'Ha ocurrido un error.';
+  function mostrarError(err, fallbackMsg) {
+    const msg = err && err.message ? err.message : (fallbackMsg || 'Ha ocurrido un error.');
     console.error('Error en la app:', msg, err);
-    mostrarErrorMaestros("No se pudieron cargar los datos maestros. Revise que existan las pestañas 'Profesionales' y 'TiposSesion', que sus encabezados sean correctos y que haya filas activas marcadas como 'Sí'.");
     alert(msg);
   }
 
