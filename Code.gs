@@ -352,12 +352,11 @@ function isActivo_(v) {
 }
 
 function getHeaderIndexMap_(headersRow) {
-  const normalizedHeaders = headersRow.map((h) => cleanText_(h).toLowerCase());
   const idx = {};
 
-  ['nombre', 'area', 'email', 'activo', 'tipoSesion'].forEach((headerName) => {
-    const pos = normalizedHeaders.indexOf(headerName.toLowerCase());
-    if (pos !== -1) idx[headerName] = pos;
+  headersRow.forEach((header, i) => {
+    const key = cleanText_(header).toLowerCase();
+    if (key) idx[key] = i;
   });
 
   return idx;
